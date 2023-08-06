@@ -1,0 +1,45 @@
+syntax = "proto3";
+package pb;
+
+option go_package = "github.com/koho/nat1s/pb;pb";
+
+import "validate/validate.proto";
+
+message Config {
+  Stun stun = 1;
+  optional string dns = 2 [(validate.rules).string.contains = ":"];
+  repeated Service services = 3 [(validate.rules).repeated.min_items = 1];
+  oneof ns {
+    option (validate.required) = true;
+    DNSPod dnspod = 4;
+  }
+}
+
+message DNSPod {
+ string secret_id = 1 [(validate.rules).string.min_len = 1];
+ string secret_key = 2 [(validate.rules).string.min_len = 1];
+}
+
+message Service {
+  string domain = 1 [(validate.rules).string.hostname = true];
+  string network = 2 [(validate.rules).string = {in: ["tcp", "udp"]}];
+  string local = 3 [(validate.rules).string.contains = ":"];
+  optional uint32 priority = 4 [(validate.rules).uint32.gt = 0];
+  optional string target = 5 [(validate.rules).string.hostname = true];
+  repeated string alpn = 6;
+  bool hint = 7;
+  map<string, string> params = 8;
+}
+
+message Stun {
+  message TCP {
+    string addr = 1;
+    string keepalive_url = 2;
+  }
+  message UDP {
+    string addr = 1;
+  }
+  TCP tcp = 1;
+  UDP udp = 2;
+  optional uint64 interval = 3 [(validate.rules).uint64.gt = 0];
+}
