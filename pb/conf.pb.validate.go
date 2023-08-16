@@ -455,6 +455,8 @@ func (m *Service) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
+	// no validation rules for Target
+
 	// no validation rules for Hint
 
 	// no validation rules for Params
@@ -465,22 +467,6 @@ func (m *Service) validate(all bool) error {
 			err := ServiceValidationError{
 				field:  "Priority",
 				reason: "value must be greater than 0",
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		}
-
-	}
-
-	if m.Target != nil {
-
-		if err := m._validateHostname(m.GetTarget()); err != nil {
-			err = ServiceValidationError{
-				field:  "Target",
-				reason: "value must be a valid hostname",
-				cause:  err,
 			}
 			if !all {
 				return err

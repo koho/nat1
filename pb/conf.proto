@@ -25,7 +25,7 @@ message Service {
   string network = 2 [(validate.rules).string = {in: ["tcp", "udp"]}];
   string local = 3 [(validate.rules).string.contains = ":"];
   optional uint32 priority = 4 [(validate.rules).uint32.gt = 0];
-  optional string target = 5 [(validate.rules).string.hostname = true];
+  string target = 5;
   repeated string alpn = 6;
   bool hint = 7;
   map<string, string> params = 8;

@@ -15,6 +15,7 @@ type Service struct {
 	provider  ns.NS
 	dnsServer string
 	alpn      string
+	effective string
 	ip        string
 	port      int
 }
@@ -27,8 +28,11 @@ func NewService(provider ns.NS, service *pb.Service, dnsServer string, ip string
 		ip:        ip,
 		port:      port,
 	}
-	if s.Target == nil {
-		s.Target = &s.Domain
+	if s.Target == "" || s.Target == "." {
+		s.Target = "."
+		s.effective = s.Domain
+	} else {
+		s.effective = s.Target
 	}
 	if s.Priority == nil {
 		var defaultPriority uint32 = 1
@@ -69,10 +73,10 @@ func (s *Service) CompareAndUpdate() error {
 			}
 		}
 	}
-	if s.port != port || other.Target != dns.Fqdn(*s.Target) || other.Priority != uint16(*s.Priority) || !paramMatch {
+	if s.port != port || other.Target != dns.Fqdn(s.Target) || other.Priority != uint16(*s.Priority) || !paramMatch {
 		log.Printf("[%s] [dns] updating SVCB record: %s:%d", s.Domain, s.ip, s.port)
 		if err := s.provider.SetSVCB(
-			s.Domain, int(*s.Priority), *s.Target, s.makeSvcParams(),
+			s.Domain, int(*s.Priority), s.Target, s.makeSvcParams(),
 		); err != nil {
 			return err
 		}
@@ -80,13 +84,13 @@ func (s *Service) CompareAndUpdate() error {
 	if s.Hint {
 		return nil
 	}
-	rr, err = ns.GetRecord(*s.Target, dns.TypeA, s.dnsServer)
+	rr, err = ns.GetRecord(s.effective, dns.TypeA, s.dnsServer)
 	if err != nil {
 		return err
 	}
 	if rr == nil || rr.(*dns.A).A.String() != s.ip {
-		log.Printf("[%s] [dns] updating A record: %s", s.Domain, s.ip)
-		return s.provider.SetA(*s.Target, s.ip)
+		log.Printf("[%s] [dns] updating A record of %s: %s", s.Domain, s.effective, s.ip)
+		return s.provider.SetA(s.effective, s.ip)
 	}
 	return nil
 }
@@ -98,14 +102,14 @@ func (s *Service) Update(newIP string, newPort int) error {
 	if oldPort != s.port || (s.Hint && oldIP != s.ip) {
 		log.Printf("[%s] [stun] updating SVCB record: %s:%d", s.Domain, s.ip, s.port)
 		if err := s.provider.SetSVCB(
-			s.Domain, int(*s.Priority), *s.Target, s.makeSvcParams(),
+			s.Domain, int(*s.Priority), s.Target, s.makeSvcParams(),
 		); err != nil {
 			return err
 		}
 	}
 	if !s.Hint && oldIP != s.ip {
-		log.Printf("[%s] [stun] updating A record: %s", s.Domain, s.ip)
-		return s.provider.SetA(*s.Target, s.ip)
+		log.Printf("[%s] [stun] updating A record of %s: %s", s.Domain, s.effective, s.ip)
+		return s.provider.SetA(s.effective, s.ip)
 	}
 	return nil
 }
