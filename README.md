@@ -14,7 +14,7 @@ Currently only dnspod is supported.
 
 ```json
 {
-  "dns": "coconut.dnspod.net:53",
+  "dns": "xxx.dnspod.net:53",
   "dnspod": {
     "secret_id": "",
     "secret_key": ""
