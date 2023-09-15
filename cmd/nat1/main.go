@@ -49,18 +49,21 @@ func serve(ctx context.Context, network string, stun string) {
 		panic(fmt.Errorf("invalid network type: %s", network))
 	}
 	if err != nil {
-		panic(err)
+		log.Println(err)
+		return
 	}
 	defer stunClient.Close()
 
 	clientCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if err = stunClient.AwaitConnection(clientCtx); err != nil {
-		panic(err)
+		log.Println(err)
+		return
 	}
 	lAddr, rAddr, err := stunClient.MapAddress(clientCtx)
 	if err != nil {
-		panic(err)
+		log.Println(err)
+		return
 	}
 
 	log.Printf("[%s] new mapping from %s -> %s", network, lAddr.String(), rAddr.String())
