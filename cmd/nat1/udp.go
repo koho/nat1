@@ -12,7 +12,7 @@ func init() {
 }
 
 var udpCmd = &cobra.Command{
-	Use:   "udp [port]",
+	Use:   "udp [port] [description]",
 	Short: "Create a UDP mapping.",
 	Long: "Create a UDP mapping. \n\n" +
 		"If the port argument is specified, a NAT entry is automatically created on gateway.\n" +

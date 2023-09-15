@@ -16,7 +16,7 @@ func init() {
 }
 
 var tcpCmd = &cobra.Command{
-	Use:   "tcp [port]",
+	Use:   "tcp [port] [description]",
 	Short: "Create a TCP mapping.",
 	Long: "Create a TCP mapping. \n\n" +
 		"If the port argument is specified, a NAT entry is automatically created on gateway.\n" +

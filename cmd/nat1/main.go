@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -88,7 +89,7 @@ func serve(ctx context.Context, network string, stun string) error {
 	}
 }
 
-func setupUPnP(network string, port int) nat.NAT {
+func setupUPnP(network string, port int, description string) nat.NAT {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -97,8 +98,11 @@ func setupUPnP(network string, port int) nat.NAT {
 		panic("no available upnp server in this network")
 	}
 
-	hostname, _ := os.Hostname()
-	mappedPort, err := upnp.AddPortMapping(ctx, network, port, fmt.Sprintf("%s %d", hostname, port), 0)
+	if description == "" {
+		hostname, _ := os.Hostname()
+		description = fmt.Sprintf("NAT1 %s %d, %s", strings.ToUpper(network), port, hostname)
+	}
+	mappedPort, err := upnp.AddPortMapping(ctx, network, port, description, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -117,7 +121,11 @@ func run(network string, stun string, args []string) {
 		if err != nil || port < 0 || port > 65535 {
 			panic("port number must be between 0 to 65535")
 		}
-		upnp := setupUPnP(network, port)
+		var description string
+		if len(args) > 1 {
+			description = args[1]
+		}
+		upnp := setupUPnP(network, port, description)
 		cleanup = func() {
 			if err = upnp.DeletePortMapping(context.Background(), network, port); err != nil {
 				log.Println(err)
