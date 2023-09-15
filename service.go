@@ -1,4 +1,4 @@
-package nat1s
+package nat1
 
 import (
 	"log"
@@ -6,8 +6,8 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/koho/nat1s/ns"
-	"github.com/koho/nat1s/pb"
+	"github.com/koho/nat1/ns"
+	"github.com/koho/nat1/pb"
 )
 
 type Service struct {
@@ -17,10 +17,10 @@ type Service struct {
 	alpn      string
 	effective string
 	ip        string
-	port      int
+	port      uint16
 }
 
-func NewService(provider ns.NS, service *pb.Service, dnsServer string, ip string, port int) *Service {
+func NewService(provider ns.NS, service *pb.Service, dnsServer string, ip string, port uint16) *Service {
 	s := &Service{
 		provider:  provider,
 		Service:   service,
@@ -53,7 +53,7 @@ func (s *Service) CompareAndUpdate() error {
 	other := rr.(*dns.SVCB)
 	paramMatch := true
 	ipv4Hint := ""
-	port := 0
+	var port uint16
 	for _, v := range other.Value {
 		switch v := v.(type) {
 		case *dns.SVCBAlpn:
@@ -66,7 +66,7 @@ func (s *Service) CompareAndUpdate() error {
 				paramMatch = false
 			}
 		case *dns.SVCBPort:
-			port = int(v.Port)
+			port = v.Port
 		default:
 			if param, ok := s.Params[v.Key().String()]; ok && v.String() != param {
 				paramMatch = false
@@ -95,7 +95,7 @@ func (s *Service) CompareAndUpdate() error {
 	return nil
 }
 
-func (s *Service) Update(newIP string, newPort int) error {
+func (s *Service) Update(newIP string, newPort uint16) error {
 	oldIP, oldPort := s.ip, s.port
 	s.ip, s.port = newIP, newPort
 
@@ -125,6 +125,6 @@ func (s *Service) makeSvcParams() map[string]string {
 	if s.alpn != "" {
 		r["alpn"] = s.alpn
 	}
-	r["port"] = strconv.Itoa(s.port)
+	r["port"] = strconv.Itoa(int(s.port))
 	return r
 }

@@ -1,4 +1,4 @@
-package nat1s
+package nat1
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"time"
@@ -21,7 +22,7 @@ const (
 
 type StunClient interface {
 	io.Closer
-	MapAddress() (net.IP, int, error)
+	MapAddress() (lAddr, rAddr netip.AddrPort, err error)
 }
 
 func mappedAddress(msg *stun.Message) (net.IP, int, error) {
@@ -82,22 +83,35 @@ func (c *StunUDPClient) readUntilClosed() {
 	}
 }
 
-func (c *StunUDPClient) MapAddress() (net.IP, int, error) {
+func (c *StunUDPClient) MapAddress() (lAddr, rAddr netip.AddrPort, err error) {
 	serverAddr, err := net.ResolveUDPAddr("udp4", c.server)
 	if err != nil {
-		return nil, 0, err
+		return
 	}
 	message := stun.MustBuild(stun.TransactionID, stun.BindingRequest)
 
 	if _, err = c.WriteTo(message.Raw, serverAddr); err != nil {
-		return nil, 0, err
+		return
 	}
 
 	select {
 	case msg := <-c.ch:
-		return mappedAddress(msg)
+		var ip net.IP
+		var port int
+		ip, port, err = mappedAddress(msg)
+		if err != nil {
+			return
+		}
+		if ip, ok := netip.AddrFromSlice(ip); ok {
+			lAddr = c.LocalAddr().(*net.UDPAddr).AddrPort()
+			rAddr = netip.AddrPortFrom(ip, uint16(port))
+		} else {
+			err = stun.ErrBadIPLength
+		}
+		return
 	case <-time.After(waitTimeout):
-		return nil, 0, os.ErrDeadlineExceeded
+		err = os.ErrDeadlineExceeded
+		return
 	}
 }
 
@@ -108,7 +122,7 @@ func (c *StunUDPClient) Close() error {
 }
 
 type StunTCPClient struct {
-	ch        chan chan net.TCPAddr
+	ch        chan chan [2]net.TCPAddr
 	ctx       context.Context
 	cancel    context.CancelFunc
 	done      chan struct{}
@@ -126,7 +140,7 @@ func NewStunTCPClient(localAddr string, server string, keepaliveUrl string) (*St
 	c := &StunTCPClient{
 		dialer: &net.Dialer{Control: reuseport.Control, LocalAddr: addr},
 		server: server,
-		ch:     make(chan chan net.TCPAddr),
+		ch:     make(chan chan [2]net.TCPAddr),
 		done:   make(chan struct{}),
 	}
 	c.ctx, c.cancel = context.WithCancel(context.Background())
@@ -159,6 +173,7 @@ func (c *StunTCPClient) keepalive() {
 			time.Sleep(waitTimeout)
 			continue
 		}
+		lAddr := conn.LocalAddr().(*net.TCPAddr)
 		done := make(chan struct{})
 
 		ip, port, err := c.mapAddress()
@@ -179,7 +194,7 @@ func (c *StunTCPClient) keepalive() {
 			case <-done:
 				goto next
 			case r := <-c.ch:
-				r <- net.TCPAddr{IP: ip, Port: port}
+				r <- [2]net.TCPAddr{*lAddr, {IP: ip, Port: port}}
 				_, err = conn.Write(c.kaPayload)
 				if err != nil {
 					log.Println(err)
@@ -196,14 +211,15 @@ func (c *StunTCPClient) keepalive() {
 	}
 }
 
-func (c *StunTCPClient) MapAddress() (net.IP, int, error) {
-	addrCh := make(chan net.TCPAddr)
+func (c *StunTCPClient) MapAddress() (lAddr, rAddr netip.AddrPort, err error) {
+	addrCh := make(chan [2]net.TCPAddr)
 	select {
 	case c.ch <- addrCh:
 		addr := <-addrCh
-		return addr.IP, addr.Port, nil
+		return addr[0].AddrPort(), addr[1].AddrPort(), nil
 	case <-time.After(waitTimeout):
-		return nil, 0, os.ErrDeadlineExceeded
+		err = os.ErrDeadlineExceeded
+		return
 	}
 }
 

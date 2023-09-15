@@ -1,4 +1,4 @@
-# nat1s
+# nat1
 
 Expose your local service to Internet in NAT1 network.
 
@@ -6,11 +6,45 @@ Expose your local service to Internet in NAT1 network.
 * Bind the mapped address to SVCB record.
 * Support both TCP and UDP.
 
-## Usage
+## Single mapping
 
-### Map address
+Install the command line tool:
 
-Currently only dnspod is supported.
+```shell
+go install github.com/koho/nat1/cmd/nat1@latest
+```
+
+### Zero config
+
+A NAT entry is automatically created on gateway.
+
+```shell
+# export local port 3389
+nat1 tcp 3389
+```
+
+### Manual config
+
+Create a public address mapping only. You need to manually configure the local address mapping on gateway.
+
+```shell
+# random local port
+nat1 tcp
+# fixed local port
+nat1 tcp -l :5000
+```
+
+## Multiple mappings
+
+Bind the mapped address to DNS SVCB record. Currently only `dnspod` is supported.
+
+Install the command line tool:
+
+```shell
+go install github.com/koho/nat1/cmd/nat1s@latest
+```
+
+An example config file:
 
 ```json
 {
@@ -35,6 +69,12 @@ Currently only dnspod is supported.
     }
   ]
 }
+```
+
+Run the service with the following command:
+
+```shell
+nat1s config.json
 ```
 
 ### Port forwarding

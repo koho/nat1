@@ -9,8 +9,8 @@ import (
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile"
 	dnspod "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/dnspod/v20210323"
 
-	"github.com/koho/nat1s/ns"
-	"github.com/koho/nat1s/pb"
+	"github.com/koho/nat1/ns"
+	"github.com/koho/nat1/pb"
 )
 
 type Client struct {

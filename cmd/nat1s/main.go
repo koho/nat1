@@ -13,10 +13,10 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/koho/nat1s"
-	"github.com/koho/nat1s/ns"
-	"github.com/koho/nat1s/ns/dnspod"
-	"github.com/koho/nat1s/pb"
+	"github.com/koho/nat1"
+	"github.com/koho/nat1/ns"
+	"github.com/koho/nat1/ns/dnspod"
+	"github.com/koho/nat1/pb"
 )
 
 var (
@@ -115,12 +115,12 @@ func completeConfig(cfg *pb.Config) {
 func Serve(ctx context.Context, provider ns.NS, cfg *pb.Config, service *pb.Service) {
 	defer log.Printf("[%s] service stopped", service.Domain)
 
-	var stunClient nat1s.StunClient
+	var stunClient nat1.StunClient
 	var err error
 	if service.Network == "tcp" {
-		stunClient, err = nat1s.NewStunTCPClient(service.Local, cfg.Stun.Tcp.Addr, cfg.Stun.Tcp.KeepaliveUrl)
+		stunClient, err = nat1.NewStunTCPClient(service.Local, cfg.Stun.Tcp.Addr, cfg.Stun.Tcp.KeepaliveUrl)
 	} else if service.Network == "udp" {
-		stunClient, err = nat1s.NewStunUDPClient(service.Local, cfg.Stun.Udp.Addr)
+		stunClient, err = nat1.NewStunUDPClient(service.Local, cfg.Stun.Udp.Addr)
 	} else {
 		panic(fmt.Errorf("invalid network type: %s", service.Network))
 	}
@@ -129,15 +129,15 @@ func Serve(ctx context.Context, provider ns.NS, cfg *pb.Config, service *pb.Serv
 	}
 	defer stunClient.Close()
 
-	ip, port, err := stunClient.MapAddress()
+	_, rAddr, err := stunClient.MapAddress()
 	if err != nil {
 		log.Printf("[%s] %s", service.Domain, err)
 		return
 	}
 
-	log.Printf("[%s] listening on %s:%d", service.Domain, ip, port)
+	log.Printf("[%s] listening on %s", service.Domain, rAddr)
 
-	svc := nat1s.NewService(provider, service, *cfg.Dns, ip.String(), port)
+	svc := nat1.NewService(provider, service, *cfg.Dns, rAddr.Addr().String(), rAddr.Port())
 
 	if err = svc.CompareAndUpdate(); err != nil {
 		log.Printf("[%s] %s", service.Domain, err)
@@ -152,12 +152,12 @@ func Serve(ctx context.Context, provider ns.NS, cfg *pb.Config, service *pb.Serv
 		case <-ctx.Done():
 			return
 		case <-ka.C:
-			ip, port, err = stunClient.MapAddress()
+			_, rAddr, err = stunClient.MapAddress()
 			if err != nil {
 				log.Printf("[%s] %s", service.Domain, err)
 				continue
 			}
-			if err = svc.Update(ip.String(), port); err != nil {
+			if err = svc.Update(rAddr.Addr().String(), rAddr.Port()); err != nil {
 				log.Printf("[%s] %s", service.Domain, err)
 			}
 		case <-hc.C:

@@ -1,7 +1,7 @@
 syntax = "proto3";
 package pb;
 
-option go_package = "github.com/koho/nat1s/pb;pb";
+option go_package = "github.com/koho/nat1/pb;pb";
 
 import "validate/validate.proto";
 
