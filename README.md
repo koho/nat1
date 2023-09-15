@@ -18,6 +18,8 @@ go install github.com/koho/nat1/cmd/nat1@latest
 
 A NAT entry is automatically created on gateway.
 
+Note: The gateway needs to have UPnP enabled.
+
 ```shell
 # export local port 3389
 nat1 tcp 3389
@@ -25,7 +27,7 @@ nat1 tcp 3389
 
 ### Manual config
 
-Create a public address mapping only. You need to manually configure the local address mapping on gateway.
+Create a public address mapping only. You need to manually configure the local address mapping on gateway (See [Port forwarding](#port-forwarding)).
 
 ```shell
 # random local port
