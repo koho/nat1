@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -38,7 +39,7 @@ func main() {
 	}
 }
 
-func serve(ctx context.Context, network string, stun string) {
+func serve(ctx context.Context, network string, stun string) error {
 	var stunClient nat1.StunClient
 	var err error
 	if network == "tcp" {
@@ -49,21 +50,18 @@ func serve(ctx context.Context, network string, stun string) {
 		panic(fmt.Errorf("invalid network type: %s", network))
 	}
 	if err != nil {
-		log.Println(err)
-		return
+		return err
 	}
 	defer stunClient.Close()
 
 	clientCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if err = stunClient.AwaitConnection(clientCtx); err != nil {
-		log.Println(err)
-		return
+		return err
 	}
 	lAddr, rAddr, err := stunClient.MapAddress(clientCtx)
 	if err != nil {
-		log.Println(err)
-		return
+		return err
 	}
 
 	log.Printf("[%s] new mapping from %s -> %s", network, lAddr.String(), rAddr.String())
@@ -85,7 +83,7 @@ func serve(ctx context.Context, network string, stun string) {
 				log.Printf("[%s] new mapping from %s -> %s", network, lAddr.String(), rAddr.String())
 			}
 		case <-ctx.Done():
-			return
+			return ctx.Err()
 		}
 	}
 }
@@ -131,7 +129,10 @@ func run(network string, stun string, args []string) {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
+		log.Printf("[%s] closing connections", network)
 		cleanup()
 	}()
-	serve(ctx, network, stun)
+	if err := serve(ctx, network, stun); err != nil && !errors.Is(err, context.Canceled) {
+		log.Println(err)
+	}
 }

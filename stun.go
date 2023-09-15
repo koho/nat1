@@ -15,6 +15,8 @@ import (
 	"github.com/pion/stun"
 )
 
+const waitTime = 5 * time.Second
+
 type StunClient interface {
 	io.Closer
 	AwaitConnection(ctx context.Context) error
@@ -164,7 +166,6 @@ func NewStunTCPClient(localAddr string, server string, keepaliveUrl string) (*St
 }
 
 func (c *StunTCPClient) run() {
-	const waitTime = 5 * time.Second
 	defer close(c.done)
 
 	var err error
@@ -285,12 +286,18 @@ func (c *StunTCPClient) mapAddress() (net.IP, int, error) {
 	// Building binding request with random transaction id.
 	message := stun.MustBuild(stun.TransactionID, stun.BindingRequest)
 
+	if err = conn.SetWriteDeadline(time.Now().Add(waitTime)); err != nil {
+		return nil, 0, err
+	}
 	if _, err = conn.Write(message.Raw); err != nil {
 		return nil, 0, err
 	}
 	msg := new(stun.Message)
 	msg.Raw = make([]byte, 1024)
 	tBuf := msg.Raw[:cap(msg.Raw)]
+	if err = conn.SetReadDeadline(time.Now().Add(waitTime)); err != nil {
+		return nil, 0, err
+	}
 	n, err := conn.Read(tBuf)
 	if err != nil {
 		return nil, 0, err
