@@ -21,7 +21,7 @@ import (
 
 var (
 	defaultStunUDPServer     = "stun.qq.com:3478"
-	defaultStunTCPServer     = "stun.freeswitch.org:3478"
+	defaultStunTCPServer     = "stun.xiaoyaoyou.xyz:3478"
 	defaultKeepaliveUrl      = "http://connectivitycheck.platform.hicloud.com/generate_204"
 	defaultDnsServer         = "114.114.114.114:53"
 	defaultKeepaliveInterval = uint64(50)
@@ -129,7 +129,11 @@ func Serve(ctx context.Context, provider ns.NS, cfg *pb.Config, service *pb.Serv
 	}
 	defer stunClient.Close()
 
-	_, rAddr, err := stunClient.MapAddress()
+	if err = stunClient.AwaitConnection(ctx); err != nil {
+		log.Printf("[%s] %s", service.Domain, err)
+		return
+	}
+	_, rAddr, err := stunClient.MapAddress(ctx)
 	if err != nil {
 		log.Printf("[%s] %s", service.Domain, err)
 		return
@@ -152,7 +156,9 @@ func Serve(ctx context.Context, provider ns.NS, cfg *pb.Config, service *pb.Serv
 		case <-ctx.Done():
 			return
 		case <-ka.C:
-			_, rAddr, err = stunClient.MapAddress()
+			clientCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			_, rAddr, err = stunClient.MapAddress(clientCtx)
+			cancel()
 			if err != nil {
 				log.Printf("[%s] %s", service.Domain, err)
 				continue

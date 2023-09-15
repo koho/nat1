@@ -2,27 +2,23 @@ package nat1
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/netip"
 	"net/url"
-	"os"
+	"sync"
 	"time"
 
 	"github.com/libp2p/go-reuseport"
 	"github.com/pion/stun"
 )
 
-const (
-	waitTimeout = 5 * time.Second
-)
-
 type StunClient interface {
 	io.Closer
-	MapAddress() (lAddr, rAddr netip.AddrPort, err error)
+	AwaitConnection(ctx context.Context) error
+	MapAddress(ctx context.Context) (lAddr, rAddr netip.AddrPort, err error)
 }
 
 func mappedAddress(msg *stun.Message) (net.IP, int, error) {
@@ -83,7 +79,7 @@ func (c *StunUDPClient) readUntilClosed() {
 	}
 }
 
-func (c *StunUDPClient) MapAddress() (lAddr, rAddr netip.AddrPort, err error) {
+func (c *StunUDPClient) MapAddress(ctx context.Context) (lAddr, rAddr netip.AddrPort, err error) {
 	serverAddr, err := net.ResolveUDPAddr("udp4", c.server)
 	if err != nil {
 		return
@@ -109,10 +105,14 @@ func (c *StunUDPClient) MapAddress() (lAddr, rAddr netip.AddrPort, err error) {
 			err = stun.ErrBadIPLength
 		}
 		return
-	case <-time.After(waitTimeout):
-		err = os.ErrDeadlineExceeded
+	case <-ctx.Done():
+		err = ctx.Err()
 		return
 	}
+}
+
+func (c *StunUDPClient) AwaitConnection(ctx context.Context) error {
+	return nil
 }
 
 func (c *StunUDPClient) Close() error {
@@ -125,6 +125,7 @@ type StunTCPClient struct {
 	ch        chan chan [2]net.TCPAddr
 	ctx       context.Context
 	cancel    context.CancelFunc
+	connUp    chan struct{}
 	done      chan struct{}
 	dialer    *net.Dialer
 	server    string
@@ -138,10 +139,11 @@ func NewStunTCPClient(localAddr string, server string, keepaliveUrl string) (*St
 		return nil, err
 	}
 	c := &StunTCPClient{
-		dialer: &net.Dialer{Control: reuseport.Control, LocalAddr: addr},
+		dialer: &net.Dialer{Control: reuseport.Control, LocalAddr: addr, Timeout: 10 * time.Second},
 		server: server,
 		ch:     make(chan chan [2]net.TCPAddr),
 		done:   make(chan struct{}),
+		connUp: make(chan struct{}),
 	}
 	c.ctx, c.cancel = context.WithCancel(context.Background())
 
@@ -157,69 +159,120 @@ func NewStunTCPClient(localAddr string, server string, keepaliveUrl string) (*St
 	if u.Port() == "" {
 		c.kaAddr += ":80"
 	}
-	go c.keepalive()
+	go c.run()
 	return c, nil
 }
 
-func (c *StunTCPClient) keepalive() {
+func (c *StunTCPClient) run() {
+	const waitTime = 5 * time.Second
 	defer close(c.done)
+
+	var err error
+	var conn net.Conn
+	var lAddr, rAddr *net.TCPAddr
+	var once sync.Once
+	var readDone chan struct{}
+
+	closeConn := func() {
+		if conn != nil {
+			conn.Close()
+			conn = nil
+		}
+	}
+	defer closeConn()
+
+	timer := time.NewTimer(0)
 	for {
-		conn, err := c.dialer.DialContext(c.ctx, "tcp4", c.kaAddr)
-		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				return
+		select {
+		case <-readDone:
+			readDone = nil
+			closeConn()
+			timer.Reset(waitTime)
+		case <-c.ctx.Done():
+			return
+		case <-timer.C:
+			var ip net.IP
+			var port int
+			conn, err = c.dialer.DialContext(c.ctx, "tcp4", c.kaAddr)
+			if err != nil {
+				log.Println(err)
+				goto retry
 			}
-			log.Println(err)
-			time.Sleep(waitTimeout)
+			lAddr = conn.LocalAddr().(*net.TCPAddr)
+			c.dialer.LocalAddr = lAddr
+
+			// Get the mapped public address
+			ip, port, err = c.mapAddress()
+			if err != nil {
+				log.Println(err)
+				closeConn()
+				goto retry
+			}
+			rAddr = &net.TCPAddr{IP: ip, Port: port}
+
+			// Discard all received data
+			readDone = make(chan struct{})
+			go func(conn net.Conn) {
+				defer close(readDone)
+				if _, err := io.Copy(io.Discard, conn); err != nil && c.ctx.Err() == nil {
+					log.Println(err)
+				}
+			}(conn)
+			// Notify others that the connection is ready
+			once.Do(func() {
+				close(c.connUp)
+			})
 			continue
-		}
-		lAddr := conn.LocalAddr().(*net.TCPAddr)
-		done := make(chan struct{})
-
-		ip, port, err := c.mapAddress()
-		if err != nil {
-			log.Println(err)
-			goto next
-		}
-
-		go func(conn net.Conn) {
-			defer close(done)
-			if _, err := io.Copy(io.Discard, conn); err != nil {
+		retry:
+			timer.Reset(waitTime)
+		case r := <-c.ch:
+			if lAddr != nil && rAddr != nil {
+				r <- [2]net.TCPAddr{*lAddr, *rAddr}
+			} else {
+				// The mapped address may not be available
+				r <- [2]net.TCPAddr{}
+			}
+			if conn == nil {
+				continue
+			}
+			// Send a keepalive payload to remote server to
+			// keep the connection alive.
+			if err = conn.SetWriteDeadline(time.Now().Add(waitTime)); err != nil {
 				log.Println(err)
 			}
-		}(conn)
-
-		for {
-			select {
-			case <-done:
-				goto next
-			case r := <-c.ch:
-				r <- [2]net.TCPAddr{*lAddr, {IP: ip, Port: port}}
-				_, err = conn.Write(c.kaPayload)
-				if err != nil {
-					log.Println(err)
-					goto next
-				}
-			case <-c.ctx.Done():
-				conn.Close()
-				return
+			if _, err = conn.Write(c.kaPayload); err != nil {
+				log.Println(err)
+				closeConn()
+				timer.Reset(waitTime)
 			}
 		}
-	next:
-		conn.Close()
-		time.Sleep(waitTimeout)
 	}
 }
 
-func (c *StunTCPClient) MapAddress() (lAddr, rAddr netip.AddrPort, err error) {
+func (c *StunTCPClient) MapAddress(ctx context.Context) (lAddr, rAddr netip.AddrPort, err error) {
 	addrCh := make(chan [2]net.TCPAddr)
 	select {
 	case c.ch <- addrCh:
 		addr := <-addrCh
+		if addr[1].IP == nil {
+			err = fmt.Errorf("connection with the server is currently down")
+			return
+		}
 		return addr[0].AddrPort(), addr[1].AddrPort(), nil
-	case <-time.After(waitTimeout):
-		err = os.ErrDeadlineExceeded
+	case <-ctx.Done():
+		err = ctx.Err()
 		return
+	}
+}
+
+func (c *StunTCPClient) AwaitConnection(ctx context.Context) error {
+	select {
+	case <-c.connUp:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.done: // If connection process is cancelled we should exit
+		return fmt.Errorf("connection shutting down")
 	}
 }
 

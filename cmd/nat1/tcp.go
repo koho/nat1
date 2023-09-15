@@ -11,7 +11,7 @@ var (
 
 func init() {
 	rootCmd.AddCommand(tcpCmd)
-	tcpCmd.Flags().StringVarP(&tcpStun, "stun", "s", "stun.freeswitch.org:3478", "STUN server address")
+	tcpCmd.Flags().StringVarP(&tcpStun, "stun", "s", "stun.xiaoyaoyou.xyz:3478", "STUN server address")
 	tcpCmd.Flags().StringVarP(&keepaliveUrl, "url", "u", "http://connectivitycheck.platform.hicloud.com/generate_204", "url to keep connection alive")
 }
 

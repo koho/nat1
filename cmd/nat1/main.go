@@ -28,7 +28,7 @@ var (
 )
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&localAddr, "local", "l", ":0", "local address to connect STUN server.")
+	rootCmd.PersistentFlags().StringVarP(&localAddr, "local", "l", ":0", "local address to connect STUN server")
 	rootCmd.PersistentFlags().DurationVarP(&interval, "interval", "i", 50*time.Second, "connection keepalive interval")
 }
 
@@ -38,7 +38,7 @@ func main() {
 	}
 }
 
-func serve(network string, stun string) {
+func serve(ctx context.Context, network string, stun string) {
 	var stunClient nat1.StunClient
 	var err error
 	if network == "tcp" {
@@ -53,7 +53,12 @@ func serve(network string, stun string) {
 	}
 	defer stunClient.Close()
 
-	lAddr, rAddr, err := stunClient.MapAddress()
+	clientCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err = stunClient.AwaitConnection(clientCtx); err != nil {
+		panic(err)
+	}
+	lAddr, rAddr, err := stunClient.MapAddress(clientCtx)
 	if err != nil {
 		panic(err)
 	}
@@ -62,20 +67,27 @@ func serve(network string, stun string) {
 
 	ka := time.NewTicker(interval)
 	defer ka.Stop()
-	for range ka.C {
-		newLAddr, newRAddr, err := stunClient.MapAddress()
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-		if newLAddr.String() != lAddr.String() || newRAddr.String() != rAddr.String() {
-			lAddr, rAddr = newLAddr, newRAddr
-			log.Printf("[%s] new mapping from %s -> %s", network, lAddr.String(), rAddr.String())
+	for {
+		select {
+		case <-ka.C:
+			clientCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
+			newLAddr, newRAddr, err := stunClient.MapAddress(clientCtx)
+			cancel()
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			if newLAddr.String() != lAddr.String() || newRAddr.String() != rAddr.String() {
+				lAddr, rAddr = newLAddr, newRAddr
+				log.Printf("[%s] new mapping from %s -> %s", network, lAddr.String(), rAddr.String())
+			}
+		case <-ctx.Done():
+			return
 		}
 	}
 }
 
-func setupUPnP(network string, port int) {
+func setupUPnP(network string, port int) nat.NAT {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -92,25 +104,31 @@ func setupUPnP(network string, port int) {
 
 	localAddr = net.JoinHostPort("0.0.0.0", strconv.Itoa(mappedPort))
 	log.Printf("[%s] forwarding to port %d", network, port)
-
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-c
-		if err = upnp.DeletePortMapping(context.Background(), network, port); err != nil {
-			panic(err)
-		}
-		os.Exit(0)
-	}()
+	return upnp
 }
 
 func run(network string, stun string, args []string) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cleanup := cancel
 	if len(args) > 0 {
 		port, err := strconv.Atoi(args[0])
 		if err != nil || port < 0 || port > 65535 {
 			panic("port number must be between 0 to 65535")
 		}
-		setupUPnP(network, port)
+		upnp := setupUPnP(network, port)
+		cleanup = func() {
+			if err = upnp.DeletePortMapping(context.Background(), network, port); err != nil {
+				log.Println(err)
+			}
+			cancel()
+		}
 	}
-	serve(network, stun)
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		cleanup()
+	}()
+	serve(ctx, network, stun)
 }
