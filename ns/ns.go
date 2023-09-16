@@ -7,7 +7,7 @@ import (
 )
 
 type NS interface {
-	SetA(rid, domain string, value string) error
+	SetA(domain string, value string) error
 	SetSVCB(rid, domain string, priority int, target string, params map[string]string, https bool) error
 }
 

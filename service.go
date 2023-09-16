@@ -117,7 +117,7 @@ find:
 	}
 	if rr == nil || rr[0].(*dns.A).A.String() != s.ip {
 		log.Printf("[%s] [dns] updating A record of %s: %s", s.Domain, s.effective, s.ip)
-		return s.provider.SetA(s.Rid, s.effective, s.ip)
+		return s.provider.SetA(s.effective, s.ip)
 	}
 	return nil
 }
@@ -136,7 +136,7 @@ func (s *Service) Update(newIP string, newPort uint16) error {
 	}
 	if (!s.Hint || s.A) && oldIP != s.ip {
 		log.Printf("[%s] [stun] updating A record of %s: %s", s.Domain, s.effective, s.ip)
-		return s.provider.SetA(s.Rid, s.effective, s.ip)
+		return s.provider.SetA(s.effective, s.ip)
 	}
 	return nil
 }
