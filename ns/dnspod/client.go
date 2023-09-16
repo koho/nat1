@@ -42,8 +42,12 @@ func (c *Client) SetA(domain string, value string) error {
 	}
 }
 
-func (c *Client) SetSVCB(domain string, priority int, target string, params map[string]string) error {
-	recordId, err := c.getRecordId(domain, "SVCB")
+func (c *Client) SetSVCB(domain string, priority int, target string, params map[string]string, https bool) error {
+	t := "SVCB"
+	if https {
+		t = "HTTPS"
+	}
+	recordId, err := c.getRecordId(domain, t)
 	if err, ok := err.(*errors.TencentCloudSDKError); ok && err.Code != "ResourceNotFound.NoDataOfRecord" {
 		return err
 	}
@@ -54,9 +58,9 @@ func (c *Client) SetSVCB(domain string, priority int, target string, params map[
 	}
 
 	if recordId == nil {
-		return c.createRecord(domain, "SVCB", value, common.Uint64Ptr(uint64(priority)))
+		return c.createRecord(domain, t, value, common.Uint64Ptr(uint64(priority)))
 	} else {
-		return c.updateRecord(recordId, domain, "SVCB", value, common.Uint64Ptr(uint64(priority)))
+		return c.updateRecord(recordId, domain, t, value, common.Uint64Ptr(uint64(priority)))
 	}
 }
 

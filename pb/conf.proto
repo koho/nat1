@@ -29,6 +29,7 @@ message Service {
   repeated string alpn = 6;
   bool hint = 7;
   map<string, string> params = 8;
+  bool https = 9;
 }
 
 message Stun {

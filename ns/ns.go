@@ -8,7 +8,7 @@ import (
 
 type NS interface {
 	SetA(domain string, value string) error
-	SetSVCB(domain string, priority int, target string, params map[string]string) error
+	SetSVCB(domain string, priority int, target string, params map[string]string, https bool) error
 }
 
 func SplitDomain(s string) (subdomain, domain string) {

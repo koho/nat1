@@ -43,14 +43,27 @@ func NewService(provider ns.NS, service *pb.Service, dnsServer string, ip string
 }
 
 func (s *Service) CompareAndUpdate() error {
-	rr, err := ns.GetRecord(s.Domain, dns.TypeSVCB, s.dnsServer)
-	if err != nil {
-		return err
+	var other *dns.SVCB
+	if s.Https {
+		rr, err := ns.GetRecord(s.Domain, dns.TypeHTTPS, s.dnsServer)
+		if err != nil {
+			return err
+		}
+		if rr == nil {
+			rr = new(dns.HTTPS)
+		}
+		other = &rr.(*dns.HTTPS).SVCB
+	} else {
+		rr, err := ns.GetRecord(s.Domain, dns.TypeSVCB, s.dnsServer)
+		if err != nil {
+			return err
+		}
+		if rr == nil {
+			rr = new(dns.SVCB)
+		}
+		other = rr.(*dns.SVCB)
 	}
-	if rr == nil {
-		rr = new(dns.SVCB)
-	}
-	other := rr.(*dns.SVCB)
+
 	paramMatch := true
 	ipv4Hint := ""
 	var port uint16
@@ -76,7 +89,7 @@ func (s *Service) CompareAndUpdate() error {
 	if s.port != port || other.Target != dns.Fqdn(s.Target) || other.Priority != uint16(*s.Priority) || !paramMatch {
 		log.Printf("[%s] [dns] updating SVCB record: %s:%d", s.Domain, s.ip, s.port)
 		if err := s.provider.SetSVCB(
-			s.Domain, int(*s.Priority), s.Target, s.makeSvcParams(),
+			s.Domain, int(*s.Priority), s.Target, s.makeSvcParams(), s.Https,
 		); err != nil {
 			return err
 		}
@@ -84,7 +97,7 @@ func (s *Service) CompareAndUpdate() error {
 	if s.Hint {
 		return nil
 	}
-	rr, err = ns.GetRecord(s.effective, dns.TypeA, s.dnsServer)
+	rr, err := ns.GetRecord(s.effective, dns.TypeA, s.dnsServer)
 	if err != nil {
 		return err
 	}
@@ -102,7 +115,7 @@ func (s *Service) Update(newIP string, newPort uint16) error {
 	if oldPort != s.port || (s.Hint && oldIP != s.ip) {
 		log.Printf("[%s] [stun] updating SVCB record: %s:%d", s.Domain, s.ip, s.port)
 		if err := s.provider.SetSVCB(
-			s.Domain, int(*s.Priority), s.Target, s.makeSvcParams(),
+			s.Domain, int(*s.Priority), s.Target, s.makeSvcParams(), s.Https,
 		); err != nil {
 			return err
 		}
