@@ -31,6 +31,7 @@ message Service {
   map<string, string> params = 8;
   bool https = 9;
   string rid = 10;
+  bool a = 11;
 }
 
 message Stun {

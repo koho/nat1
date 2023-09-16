@@ -108,7 +108,7 @@ find:
 			return err
 		}
 	}
-	if s.Hint {
+	if s.Hint && !s.A {
 		return nil
 	}
 	rr, err = ns.GetRecords(s.effective, dns.TypeA, s.dnsServer)
@@ -134,7 +134,7 @@ func (s *Service) Update(newIP string, newPort uint16) error {
 			return err
 		}
 	}
-	if !s.Hint && oldIP != s.ip {
+	if (!s.Hint || s.A) && oldIP != s.ip {
 		log.Printf("[%s] [stun] updating A record of %s: %s", s.Domain, s.effective, s.ip)
 		return s.provider.SetA(s.Rid, s.effective, s.ip)
 	}
