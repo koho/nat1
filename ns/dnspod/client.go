@@ -2,6 +2,7 @@ package dnspod
 
 import (
 	"log"
+	"strconv"
 
 	"github.com/miekg/dns"
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
@@ -29,10 +30,20 @@ func New(secret *pb.DNSPod) (*Client, error) {
 	return &Client{client}, nil
 }
 
-func (c *Client) SetA(domain string, value string) error {
-	recordId, err := c.getRecordId(domain, "A")
-	if err, ok := err.(*errors.TencentCloudSDKError); ok && err.Code != "ResourceNotFound.NoDataOfRecord" {
-		return err
+func (c *Client) SetA(rid, domain string, value string) error {
+	var recordId *uint64
+	var err error
+	if rid != "" {
+		ridInt, err := strconv.ParseUint(rid, 10, 64)
+		if err != nil {
+			return err
+		}
+		recordId = &ridInt
+	} else {
+		recordId, err = c.getRecordId(domain, "A")
+		if err, ok := err.(*errors.TencentCloudSDKError); ok && err.Code != "ResourceNotFound.NoDataOfRecord" {
+			return err
+		}
 	}
 
 	if recordId == nil {
@@ -42,14 +53,25 @@ func (c *Client) SetA(domain string, value string) error {
 	}
 }
 
-func (c *Client) SetSVCB(domain string, priority int, target string, params map[string]string, https bool) error {
+func (c *Client) SetSVCB(rid, domain string, priority int, target string, params map[string]string, https bool) error {
 	t := "SVCB"
 	if https {
 		t = "HTTPS"
 	}
-	recordId, err := c.getRecordId(domain, t)
-	if err, ok := err.(*errors.TencentCloudSDKError); ok && err.Code != "ResourceNotFound.NoDataOfRecord" {
-		return err
+
+	var recordId *uint64
+	var err error
+	if rid != "" {
+		ridInt, err := strconv.ParseUint(rid, 10, 64)
+		if err != nil {
+			return err
+		}
+		recordId = &ridInt
+	} else {
+		recordId, err = c.getRecordId(domain, t)
+		if err, ok := err.(*errors.TencentCloudSDKError); ok && err.Code != "ResourceNotFound.NoDataOfRecord" {
+			return err
+		}
 	}
 
 	value := dns.Fqdn(target)

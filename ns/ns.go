@@ -7,8 +7,8 @@ import (
 )
 
 type NS interface {
-	SetA(domain string, value string) error
-	SetSVCB(domain string, priority int, target string, params map[string]string, https bool) error
+	SetA(rid, domain string, value string) error
+	SetSVCB(rid, domain string, priority int, target string, params map[string]string, https bool) error
 }
 
 func SplitDomain(s string) (subdomain, domain string) {
@@ -37,7 +37,7 @@ func SplitDomainPtr(s string) (subdomain, domain *string) {
 	return
 }
 
-func GetRecord(domain string, t uint16, dnsServer string) (dns.RR, error) {
+func GetRecords(domain string, t uint16, dnsServer string) ([]dns.RR, error) {
 	c := new(dns.Client)
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(domain), t)
@@ -49,5 +49,5 @@ func GetRecord(domain string, t uint16, dnsServer string) (dns.RR, error) {
 	if len(r.Answer) == 0 {
 		return nil, nil
 	}
-	return r.Answer[0], nil
+	return r.Answer, nil
 }

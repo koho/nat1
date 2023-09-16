@@ -463,6 +463,8 @@ func (m *Service) validate(all bool) error {
 
 	// no validation rules for Https
 
+	// no validation rules for Rid
+
 	if m.Priority != nil {
 
 		if m.GetPriority() <= 0 {

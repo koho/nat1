@@ -2,6 +2,7 @@ package nat1
 
 import (
 	"log"
+	"slices"
 	"strconv"
 
 	"github.com/miekg/dns"
@@ -44,24 +45,37 @@ func NewService(provider ns.NS, service *pb.Service, dnsServer string, ip string
 
 func (s *Service) CompareAndUpdate() error {
 	var other *dns.SVCB
+	t := dns.TypeSVCB
 	if s.Https {
-		rr, err := ns.GetRecord(s.Domain, dns.TypeHTTPS, s.dnsServer)
-		if err != nil {
-			return err
+		t = dns.TypeHTTPS
+	}
+	rr, err := ns.GetRecords(s.Domain, t, s.dnsServer)
+	if err != nil {
+		return err
+	}
+find:
+	for _, v := range rr {
+		var svcb *dns.SVCB
+		switch v := v.(type) {
+		case *dns.HTTPS:
+			svcb = &v.SVCB
+		case *dns.SVCB:
+			svcb = v
+		default:
+			continue
 		}
-		if rr == nil {
-			rr = new(dns.HTTPS)
+		if other == nil {
+			other = svcb
 		}
-		other = &rr.(*dns.HTTPS).SVCB
-	} else {
-		rr, err := ns.GetRecord(s.Domain, dns.TypeSVCB, s.dnsServer)
-		if err != nil {
-			return err
+		for _, param := range svcb.Value {
+			if alpn, ok := param.(*dns.SVCBAlpn); ok && slices.Equal(s.Alpn, alpn.Alpn) {
+				other = svcb
+				break find
+			}
 		}
-		if rr == nil {
-			rr = new(dns.SVCB)
-		}
-		other = rr.(*dns.SVCB)
+	}
+	if other == nil {
+		other = new(dns.SVCB)
 	}
 
 	paramMatch := true
@@ -89,7 +103,7 @@ func (s *Service) CompareAndUpdate() error {
 	if s.port != port || other.Target != dns.Fqdn(s.Target) || other.Priority != uint16(*s.Priority) || !paramMatch {
 		log.Printf("[%s] [dns] updating SVCB record: %s:%d", s.Domain, s.ip, s.port)
 		if err := s.provider.SetSVCB(
-			s.Domain, int(*s.Priority), s.Target, s.makeSvcParams(), s.Https,
+			s.Rid, s.Domain, int(*s.Priority), s.Target, s.makeSvcParams(), s.Https,
 		); err != nil {
 			return err
 		}
@@ -97,13 +111,13 @@ func (s *Service) CompareAndUpdate() error {
 	if s.Hint {
 		return nil
 	}
-	rr, err := ns.GetRecord(s.effective, dns.TypeA, s.dnsServer)
+	rr, err = ns.GetRecords(s.effective, dns.TypeA, s.dnsServer)
 	if err != nil {
 		return err
 	}
-	if rr == nil || rr.(*dns.A).A.String() != s.ip {
+	if rr == nil || rr[0].(*dns.A).A.String() != s.ip {
 		log.Printf("[%s] [dns] updating A record of %s: %s", s.Domain, s.effective, s.ip)
-		return s.provider.SetA(s.effective, s.ip)
+		return s.provider.SetA(s.Rid, s.effective, s.ip)
 	}
 	return nil
 }
@@ -115,14 +129,14 @@ func (s *Service) Update(newIP string, newPort uint16) error {
 	if oldPort != s.port || (s.Hint && oldIP != s.ip) {
 		log.Printf("[%s] [stun] updating SVCB record: %s:%d", s.Domain, s.ip, s.port)
 		if err := s.provider.SetSVCB(
-			s.Domain, int(*s.Priority), s.Target, s.makeSvcParams(), s.Https,
+			s.Rid, s.Domain, int(*s.Priority), s.Target, s.makeSvcParams(), s.Https,
 		); err != nil {
 			return err
 		}
 	}
 	if !s.Hint && oldIP != s.ip {
 		log.Printf("[%s] [stun] updating A record of %s: %s", s.Domain, s.effective, s.ip)
-		return s.provider.SetA(s.effective, s.ip)
+		return s.provider.SetA(s.Rid, s.effective, s.ip)
 	}
 	return nil
 }
