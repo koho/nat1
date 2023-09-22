@@ -39,6 +39,10 @@ func SplitDomainPtr(s string) (subdomain, domain *string) {
 
 func GetRecords(domain string, t uint16, dnsServer string) ([]dns.RR, error) {
 	c := new(dns.Client)
+	if strings.HasPrefix(dnsServer, "tls://") {
+		c.Net = "tcp-tls"
+		dnsServer = dnsServer[6:]
+	}
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(domain), t)
 	m.RecursionDesired = true
