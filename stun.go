@@ -169,7 +169,7 @@ func (c *StunTCPClient) run() {
 	defer close(c.done)
 
 	var err error
-	var conn net.Conn
+	var conn *net.TCPConn
 	var lAddr, rAddr *net.TCPAddr
 	var once sync.Once
 	var readDone chan struct{}
@@ -194,11 +194,12 @@ func (c *StunTCPClient) run() {
 		case <-timer.C:
 			var ip net.IP
 			var port int
-			conn, err = c.dialer.DialContext(c.ctx, "tcp4", c.kaAddr)
+			newConn, err := c.dialer.DialContext(c.ctx, "tcp4", c.kaAddr)
 			if err != nil {
 				log.Println(err)
 				goto retry
 			}
+			conn = newConn.(*net.TCPConn)
 			lAddr = conn.LocalAddr().(*net.TCPAddr)
 			c.dialer.LocalAddr = lAddr
 
@@ -234,6 +235,11 @@ func (c *StunTCPClient) run() {
 				r <- [2]net.TCPAddr{}
 			}
 			if conn == nil {
+				continue
+			}
+			if getSendQueueLength(conn) > 0 {
+				closeConn()
+				timer.Reset(waitTime)
 				continue
 			}
 			// Send a keepalive payload to remote server to

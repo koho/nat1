@@ -1,12 +1,16 @@
 package nat1
 
 import (
-	"log"
-	"os/exec"
+	"golang.org/x/sys/unix"
+	"net"
+	"unsafe"
 )
 
-func init() {
-	if err := exec.Command("sysctl", "-w", "net.ipv4.tcp_retries2=8").Run(); err != nil {
-		log.Println(err)
+func getSendQueueLength(conn *net.TCPConn) (qLen int) {
+	if r, err := conn.SyscallConn(); err == nil {
+		r.Control(func(fd uintptr) {
+			unix.Syscall(unix.SYS_IOCTL, fd, unix.SIOCOUTQ, uintptr(unsafe.Pointer(&qLen)))
+		})
 	}
+	return
 }
