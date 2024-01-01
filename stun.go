@@ -238,6 +238,7 @@ func (c *StunTCPClient) run() {
 				continue
 			}
 			if getSendQueueLength(conn) > 0 {
+				log.Println("close connection due to inactivity")
 				closeConn()
 				timer.Reset(waitTime)
 				continue
