@@ -141,7 +141,7 @@ func NewStunTCPClient(localAddr string, server string, keepaliveUrl string) (*St
 		return nil, err
 	}
 	c := &StunTCPClient{
-		dialer: &net.Dialer{Control: reuseport.Control, LocalAddr: addr, Timeout: 10 * time.Second},
+		dialer: &net.Dialer{Control: reuseport.Control, LocalAddr: addr, Timeout: 10 * time.Second, KeepAlive: -1},
 		server: server,
 		ch:     make(chan chan [2]net.TCPAddr),
 		done:   make(chan struct{}),
