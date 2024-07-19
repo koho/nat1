@@ -2,6 +2,7 @@ package nat1
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -69,7 +70,11 @@ func (c *StunUDPClient) readUntilClosed() {
 		tBuf := m.Raw[:cap(m.Raw)]
 		n, _, err := c.ReadFromUDP(tBuf)
 		if err != nil {
-			return
+			if errors.Is(err, net.ErrClosed) {
+				return
+			}
+			log.Println(err)
+			continue
 		}
 		m.Raw = tBuf[:n]
 		if err = m.Decode(); err == nil {
