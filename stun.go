@@ -82,6 +82,8 @@ func (c *StunUDPClient) readUntilClosed() {
 			case c.ch <- m:
 			default:
 			}
+		} else {
+			log.Println(err)
 		}
 	}
 }
