@@ -8,7 +8,7 @@ var udpStun string
 
 func init() {
 	rootCmd.AddCommand(udpCmd)
-	udpCmd.Flags().StringVarP(&udpStun, "stun", "s", "stun.qq.com:3478", "STUN server address")
+	udpCmd.Flags().StringVarP(&udpStun, "stun", "s", "stun.chat.bilibili.com:3478", "STUN server address")
 }
 
 var udpCmd = &cobra.Command{
